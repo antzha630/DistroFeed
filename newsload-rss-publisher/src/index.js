@@ -13,6 +13,7 @@ logger.info('Database initialized');
 const app = express();
 app.use(express.json());
 
+app.get('/', routes.homeHandler);
 app.get('/health', routes.healthHandler);
 app.get('/status', routes.statusHandler);
 app.post('/run-now', routes.runNowHandler);

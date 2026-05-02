@@ -3,6 +3,36 @@
 const { getDb } = require('./db');
 const worker = require('./worker');
 
+function homeHandler(req, res) {
+  const uptime = Math.round(process.uptime());
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const status = worker.getLastRunSummary();
+
+  res.type('html').send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Newsload RSS Publisher</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #111; }
+    code { background: #f4f4f4; padding: 0.125rem 0.25rem; border-radius: 4px; }
+    .muted { color: #555; }
+  </style>
+</head>
+<body>
+  <h1>Newsload RSS Publisher</h1>
+  <p>Service is running.</p>
+  <p class="muted">Uptime: ${uptime}s</p>
+  <p class="muted">Last run: ${status?.finishedAt || 'not run yet'}</p>
+  <ul>
+    <li><a href="${baseUrl}/health"><code>/health</code></a></li>
+    <li><a href="${baseUrl}/status"><code>/status</code></a></li>
+  </ul>
+</body>
+</html>`);
+}
+
 function healthHandler(req, res) {
   const uptime = process.uptime();
   res.json({
@@ -63,6 +93,7 @@ function runNowHandler(req, res) {
 }
 
 module.exports = {
+  homeHandler,
   healthHandler,
   statusHandler,
   runNowHandler,
