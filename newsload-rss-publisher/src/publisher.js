@@ -5,14 +5,22 @@ const config = require('./config');
 const logger = require('./logger');
 const { getDb } = require('./db');
 
-function buildPayload(item) {
-  return {
+function buildPayload(item, options = {}) {
+  const includePublicationDate = options.includePublicationDate !== false;
+  const payload = {
     user_info: { name: 'Kite AI RSS Bot' },
     title: item.title,
     content: item.body,
     more_info_url: item.link,
     source: 'Kite AI',
   };
+
+  // Distro should display source publication date instead of ingest time when available.
+  if (includePublicationDate && item.publishedAt) {
+    payload.published_date = item.publishedAt;
+  }
+
+  return payload;
 }
 
 function recordItem(db, item, result) {
@@ -56,10 +64,11 @@ async function publishOne(item, dryRun = false) {
     return { success: true, status: 0, response: null, dryRun: true, skipRecord: true };
   }
 
-  const payload = buildPayload(item);
+  const payload = buildPayload(item, { includePublicationDate: true });
+  const fallbackPayload = buildPayload(item, { includePublicationDate: false });
 
   try {
-    const res = await axios.post(config.distro.apiEndpoint, payload, {
+    let res = await axios.post(config.distro.apiEndpoint, payload, {
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': config.distro.apiKey,
@@ -67,6 +76,22 @@ async function publishOne(item, dryRun = false) {
       timeout: config.requestTimeoutMs,
       validateStatus: () => true,
     });
+
+    // Keep compatibility with older Distro schemas that may reject date fields.
+    if (item.publishedAt && res.status >= 400 && res.status < 500) {
+      logger.warn('Retrying publish without published_date', {
+        feedItemId: item.feedItemId,
+        status: res.status,
+      });
+      res = await axios.post(config.distro.apiEndpoint, fallbackPayload, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': config.distro.apiKey,
+        },
+        timeout: config.requestTimeoutMs,
+        validateStatus: () => true,
+      });
+    }
 
     if (res.status >= 200 && res.status < 300) {
       logger.info('Published to Distro', { feedItemId: item.feedItemId, status: res.status });

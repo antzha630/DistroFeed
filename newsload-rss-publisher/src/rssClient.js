@@ -44,7 +44,7 @@ function normalizeItem(item) {
     feedItemId: stableId,
     title,
     link,
-    publishedAt: publishedAt || new Date().toISOString(),
+    publishedAt,
     body,
   };
 }
@@ -68,7 +68,7 @@ async function fetchAndNormalize(feedUrl, maxItems = 20) {
 
   const deduped = dedupeByFeedItemId(normalized);
   const sorted = deduped.sort((a, b) =>
-    new Date(b.publishedAt) - new Date(a.publishedAt)
+    new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0)
   );
 
   return sorted.slice(0, maxItems);
