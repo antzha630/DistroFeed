@@ -4,7 +4,7 @@ const config = require('./config');
 const logger = require('./logger');
 const { getDb } = require('./db');
 const { fetchFeed } = require('./rssClient');
-const { publishNewItems } = require('./publisher');
+const { publishNewItemsWithOptions } = require('./publisher');
 
 let isRunning = false;
 let lastRunAt = null;
@@ -19,9 +19,35 @@ function setRunLock(value) {
 }
 
 async function runPoll() {
+  return runPopulate({
+    rssFeedUrl: config.rssFeedUrl,
+    apiEndpoint: config.distro.apiEndpoint,
+    apiKey: config.distro.apiKey,
+    maxItems: config.maxItemsPerPoll,
+    dryRun: config.dryRun,
+  });
+}
+
+async function runPopulate(options = {}) {
   if (isRunning) {
-    logger.warn('Poll already in progress, skipping');
+    logger.warn('Populate already in progress, skipping');
     return null;
+  }
+
+  const rssFeedUrl = (options.rssFeedUrl || config.rssFeedUrl || '').trim();
+  const apiEndpoint = (options.apiEndpoint || config.distro.apiEndpoint || '').trim();
+  const apiKey = (options.apiKey || config.distro.apiKey || '').trim();
+  const maxItems = options.maxItems || config.maxItemsPerPoll;
+  const dryRun = options.dryRun === true;
+
+  if (!rssFeedUrl) {
+    return { itemsFetched: 0, itemsNew: 0, itemsSent: 0, itemsFailed: 0, itemsSkipped: 0, error: 'RSS feed URL is required' };
+  }
+  if (!apiEndpoint) {
+    return { itemsFetched: 0, itemsNew: 0, itemsSent: 0, itemsFailed: 0, itemsSkipped: 0, error: 'Distro API endpoint is required' };
+  }
+  if (!apiKey && !dryRun) {
+    return { itemsFetched: 0, itemsNew: 0, itemsSent: 0, itemsFailed: 0, itemsSkipped: 0, error: 'API key is required unless dry run is enabled' };
   }
 
   setRunLock(true);
@@ -37,16 +63,22 @@ async function runPoll() {
     itemsNew: 0,
     itemsSent: 0,
     itemsFailed: 0,
+    itemsSkipped: 0,
+    startedAt,
+    finishedAt: null,
+    mode: 'populate',
+    dryRun,
+    itemResults: [],
   };
 
   try {
-    const { items, error } = await fetchFeed(config.rssFeedUrl, config.maxItemsPerPoll);
+    const { items, error } = await fetchFeed(rssFeedUrl, maxItems);
     summary.itemsFetched = items.length;
 
     if (error) {
       logger.error('Poll aborted due to RSS fetch error', { message: error.message });
       lastRunAt = startedAt;
-      lastRunSummary = { ...summary, error: error.message };
+      lastRunSummary = { ...summary, error: error.message, finishedAt: new Date().toISOString() };
       return lastRunSummary;
     }
 
@@ -56,9 +88,14 @@ async function runPoll() {
     }).length;
     summary.itemsNew = items.length - alreadyPublished;
 
-    const { sent, failed } = await publishNewItems(items, config.dryRun);
+    const { sent, failed, skipped, itemResults } = await publishNewItemsWithOptions(items, dryRun, {
+      apiEndpoint,
+      apiKey,
+    });
     summary.itemsSent = sent;
     summary.itemsFailed = failed;
+    summary.itemsSkipped = skipped;
+    summary.itemResults = itemResults;
 
     const finishedAt = new Date().toISOString();
     db.prepare(
@@ -73,7 +110,7 @@ async function runPoll() {
     );
 
     lastRunAt = finishedAt;
-    lastRunSummary = { ...summary };
+    lastRunSummary = { ...summary, finishedAt };
     logger.info('Poll complete', summary);
 
     return lastRunSummary;
@@ -91,7 +128,7 @@ async function runPoll() {
       runId
     );
     lastRunAt = finishedAt;
-    lastRunSummary = { ...summary, error: err.message };
+    lastRunSummary = { ...summary, finishedAt, error: err.message };
     return lastRunSummary;
   } finally {
     setRunLock(false);
@@ -119,6 +156,7 @@ function startScheduler() {
 
 module.exports = {
   runPoll,
+  runPopulate,
   getRunLock,
   getLastRunAt,
   getLastRunSummary,

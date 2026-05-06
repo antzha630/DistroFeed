@@ -19,16 +19,6 @@ function parsePositiveInt(val, defaultVal, name) {
 function validate() {
   const errors = [];
 
-  if (!process.env.DISTRO_API_ENDPOINT?.trim()) {
-    errors.push('DISTRO_API_ENDPOINT is required');
-  }
-  if (!process.env.DISTRO_API_KEY?.trim()) {
-    errors.push('DISTRO_API_KEY is required');
-  }
-  if (!process.env.RSS_FEED_URL?.trim()) {
-    errors.push('RSS_FEED_URL is required');
-  }
-
   const nodeEnv = process.env.NODE_ENV || 'development';
   if (!VALID_NODE_ENV.includes(nodeEnv)) {
     errors.push(`NODE_ENV must be one of: ${VALID_NODE_ENV.join(', ')}`);

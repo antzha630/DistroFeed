@@ -59,6 +59,16 @@ function recordItem(db, item, result) {
 }
 
 async function publishOne(item, dryRun = false) {
+  return publishOneWithOptions(item, dryRun, {
+    apiEndpoint: config.distro.apiEndpoint,
+    apiKey: config.distro.apiKey,
+  });
+}
+
+async function publishOneWithOptions(item, dryRun = false, options = {}) {
+  const apiEndpoint = options.apiEndpoint || config.distro.apiEndpoint;
+  const apiKey = options.apiKey || config.distro.apiKey;
+
   if (dryRun) {
     logger.info('DRY_RUN: would publish', { feedItemId: item.feedItemId, title: item.title });
     return { success: true, status: 0, response: null, dryRun: true, skipRecord: true };
@@ -68,10 +78,10 @@ async function publishOne(item, dryRun = false) {
   const fallbackPayload = buildPayload(item, { includePublicationDate: false });
 
   try {
-    let res = await axios.post(config.distro.apiEndpoint, payload, {
+    let res = await axios.post(apiEndpoint, payload, {
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': config.distro.apiKey,
+        'x-api-key': apiKey,
       },
       timeout: config.requestTimeoutMs,
       validateStatus: () => true,
@@ -83,10 +93,10 @@ async function publishOne(item, dryRun = false) {
         feedItemId: item.feedItemId,
         status: res.status,
       });
-      res = await axios.post(config.distro.apiEndpoint, fallbackPayload, {
+      res = await axios.post(apiEndpoint, fallbackPayload, {
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': config.distro.apiKey,
+          'x-api-key': apiKey,
         },
         timeout: config.requestTimeoutMs,
         validateStatus: () => true,
@@ -132,24 +142,48 @@ function isAlreadyPublished(db, feedItemId) {
 }
 
 async function publishNewItems(items, dryRun = false) {
+  return publishNewItemsWithOptions(items, dryRun, {});
+}
+
+async function publishNewItemsWithOptions(items, dryRun = false, options = {}) {
   const db = getDb();
-  const results = { sent: 0, failed: 0 };
+  const results = { sent: 0, failed: 0, skipped: 0, itemResults: [] };
 
   for (const item of items) {
     if (isAlreadyPublished(db, item.feedItemId)) {
       logger.debug('Skip already published', { feedItemId: item.feedItemId });
+      results.skipped++;
+      results.itemResults.push({
+        feedItemId: item.feedItemId,
+        title: item.title,
+        status: 'skipped',
+        reason: 'already_published',
+      });
       continue;
     }
 
-    const result = await publishOne(item, dryRun);
+    const result = await publishOneWithOptions(item, dryRun, options);
     if (!result.skipRecord) {
       recordItem(db, item, result);
     }
 
     if (result.success) {
       results.sent++;
+      results.itemResults.push({
+        feedItemId: item.feedItemId,
+        title: item.title,
+        status: 'sent',
+        httpStatus: result.status ?? null,
+      });
     } else {
       results.failed++;
+      results.itemResults.push({
+        feedItemId: item.feedItemId,
+        title: item.title,
+        status: 'failed',
+        httpStatus: result.status ?? null,
+        error: result.error || 'Unknown error',
+      });
     }
   }
 
@@ -158,7 +192,9 @@ async function publishNewItems(items, dryRun = false) {
 
 module.exports = {
   publishOne,
+  publishOneWithOptions,
   publishNewItems,
+  publishNewItemsWithOptions,
   isAlreadyPublished,
   buildPayload,
 };

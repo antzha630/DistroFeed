@@ -17,15 +17,7 @@ app.get('/', routes.homeHandler);
 app.get('/health', routes.healthHandler);
 app.get('/status', routes.statusHandler);
 app.post('/run-now', routes.runNowHandler);
-
-worker.runPoll()
-  .then(() => {
-    worker.startScheduler();
-  })
-  .catch((err) => {
-    logger.error('Initial poll failed', { message: err.message });
-    worker.startScheduler();
-  });
+app.post('/populate', routes.populateHandler);
 
 app.listen(config.port, () => {
   logger.info('Server started', { port: config.port, env: config.nodeEnv });
