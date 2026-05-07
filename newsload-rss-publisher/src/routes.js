@@ -16,16 +16,28 @@ function homeHandler(req, res) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Distro Populate</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #111; max-width: 900px; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; color: #111; max-width: 900px; line-height: 1.45; }
     code { background: #f4f4f4; padding: 0.125rem 0.25rem; border-radius: 4px; }
     .muted { color: #555; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .form-fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.35rem 2rem;
+      align-items: start;
+    }
     .full { grid-column: 1 / -1; }
-    label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
-    input, select { width: 100%; padding: 0.6rem; border-radius: 8px; border: 1px solid #ddd; font-size: 14px; }
-    button { padding: 0.7rem 1rem; border: 0; border-radius: 8px; background: #111; color: #fff; cursor: pointer; }
+    .field { display: flex; flex-direction: column; gap: 0.45rem; min-width: 0; }
+    label { font-weight: 600; font-size: 0.875rem; letter-spacing: 0.01em; color: #333; }
+    input, select { width: 100%; padding: 0.65rem 0.85rem; border-radius: 8px; border: 1px solid #cfcfcf; font-size: 14px; background: #fff; transition: border-color 0.15s; }
+    input:focus, select:focus { outline: none; border-color: #111; box-shadow: 0 0 0 3px rgba(17,17,17,0.08); }
+    button { padding: 0.75rem 1.25rem; border: 0; border-radius: 8px; background: #111; color: #fff; cursor: pointer; font-weight: 600; font-size: 15px; align-self: flex-start; margin-top: 0.25rem; }
     button:disabled { opacity: 0.7; cursor: wait; }
-    .card { border: 1px solid #eee; border-radius: 10px; padding: 1rem; margin-top: 1rem; }
+    .card { border: 1px solid #e8e8e8; border-radius: 12px; padding: 1.5rem 1.75rem; margin-top: 1.25rem; background: #fafafa; }
+    @media (max-width: 640px) {
+      body { margin: 1.25rem; }
+      .form-fields { grid-template-columns: 1fr; gap: 1.35rem; }
+    }
     .ok { color: #1a7f37; font-weight: 600; }
     .fail { color: #b42318; font-weight: 600; }
     .partial { color: #9a6700; font-weight: 600; }
@@ -38,32 +50,34 @@ function homeHandler(req, res) {
   <p>Populate a newsload from an RSS feed up to the current moment.</p>
   <p class="muted">Uptime: ${uptime}s</p>
   <p class="muted">Last run: ${status?.finishedAt || 'not run yet'}</p>
-  <form id="populateForm" class="card grid">
-    <div class="full">
+  <form id="populateForm" class="card">
+    <div class="form-fields">
+    <div class="full field">
       <label for="rssFeedUrl">RSS Feed URL</label>
       <input id="rssFeedUrl" name="rssFeedUrl" required placeholder="https://medium.com/feed/@KiteAI" value="${config.rssFeedUrl || ''}" />
     </div>
-    <div>
+    <div class="field">
       <label for="apiKey">API Key (optional if server default configured)</label>
-      <input id="apiKey" name="apiKey" type="password" placeholder="sk_..." />
+      <input id="apiKey" name="apiKey" type="password" placeholder="sk_..." autocomplete="off" />
     </div>
-    <div>
+    <div class="field">
       <label for="apiEndpoint">Distro API Endpoint</label>
-      <input id="apiEndpoint" name="apiEndpoint" placeholder="https://.../api/external/news" value="${config.distro.apiEndpoint || ''}" />
+      <input id="apiEndpoint" name="apiEndpoint" placeholder="https://.../api/external/news" value="${config.distro.apiEndpoint || ''}" autocomplete="off" />
     </div>
-    <div>
+    <div class="field">
       <label for="maxItems">Max Items</label>
       <input id="maxItems" name="maxItems" type="number" min="1" value="20" />
     </div>
-    <div>
+    <div class="field">
       <label for="dryRun">Mode</label>
       <select id="dryRun" name="dryRun">
         <option value="false" selected>Publish to Distro</option>
         <option value="true">Dry run (no publish)</option>
       </select>
     </div>
-    <div class="full">
+    <div class="full field">
       <button id="runBtn" type="submit">Run Populate</button>
+    </div>
     </div>
   </form>
   <div id="result" class="card muted">No run triggered yet.</div>
