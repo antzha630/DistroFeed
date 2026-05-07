@@ -78,6 +78,7 @@ function dedupeByFeedItemId(items) {
 async function fetchAndNormalize(feedUrl, maxItems = 20) {
   const feed = await parser.parseURL(feedUrl);
   const rawItems = feed?.items ?? [];
+  const itemsInFeedXml = rawItems.length;
 
   const normalized = rawItems
     .map(normalizeItem)
@@ -88,12 +89,23 @@ async function fetchAndNormalize(feedUrl, maxItems = 20) {
     new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0)
   );
 
-  return sorted.slice(0, maxItems);
+  const items = sorted.slice(0, maxItems);
+  return {
+    items,
+    itemsInFeedXml,
+    itemsAfterNormalize: normalized.length,
+    itemsAfterDedupe: deduped.length,
+  };
 }
 
 async function fetchFeed(feedUrl, maxItems = 20) {
   try {
-    const items = await fetchAndNormalize(feedUrl, maxItems);
+    const {
+      items,
+      itemsInFeedXml,
+      itemsAfterNormalize,
+      itemsAfterDedupe,
+    } = await fetchAndNormalize(feedUrl, maxItems);
     const missingDates = items.filter((it) => !it.publishedAt).length;
     if (missingDates > 0) {
       logger.warn('Some RSS items had no parseable publish date; Distro may use ingest time', {
@@ -102,11 +114,32 @@ async function fetchFeed(feedUrl, maxItems = 20) {
         total: items.length,
       });
     }
+    if (maxItems > itemsInFeedXml) {
+      logger.info('RSS snapshot smaller than maxItems cap (normal for Medium and many feeds)', {
+        feedUrl,
+        maxItemsRequested: maxItems,
+        itemsInFeedXml,
+      });
+    }
     logger.debug('RSS fetch complete', { count: items.length, feedUrl });
-    return { items, error: null };
+    return {
+      items,
+      error: null,
+      maxItemsRequested: maxItems,
+      itemsInFeedXml,
+      itemsAfterNormalize,
+      itemsAfterDedupe,
+    };
   } catch (err) {
     logger.error('RSS fetch failed', { feedUrl, message: err.message });
-    return { items: [], error: err };
+    return {
+      items: [],
+      error: err,
+      maxItemsRequested: maxItems,
+      itemsInFeedXml: 0,
+      itemsAfterNormalize: 0,
+      itemsAfterDedupe: 0,
+    };
   }
 }
 

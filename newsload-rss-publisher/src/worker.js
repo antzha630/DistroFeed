@@ -37,7 +37,9 @@ async function runPopulate(options = {}) {
   const rssFeedUrl = (options.rssFeedUrl || config.rssFeedUrl || '').trim();
   const apiEndpoint = (options.apiEndpoint || config.distro.apiEndpoint || '').trim();
   const apiKey = (options.apiKey || config.distro.apiKey || '').trim();
-  const maxItems = options.maxItems || config.maxItemsPerPoll;
+  const parsedMax = parseInt(options.maxItems, 10);
+  const maxItems =
+    Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : config.maxItemsPerPoll;
   const dryRun = options.dryRun === true;
 
   if (!rssFeedUrl) {
@@ -69,11 +71,23 @@ async function runPopulate(options = {}) {
     mode: 'populate',
     dryRun,
     itemResults: [],
+    maxItemsRequested: maxItems,
+    itemsInFeedXml: null,
+    itemsAfterDedupe: null,
   };
 
   try {
-    const { items, error } = await fetchFeed(rssFeedUrl, maxItems);
+    const {
+      items,
+      error,
+      maxItemsRequested,
+      itemsInFeedXml,
+      itemsAfterDedupe,
+    } = await fetchFeed(rssFeedUrl, maxItems);
     summary.itemsFetched = items.length;
+    summary.maxItemsRequested = maxItemsRequested;
+    summary.itemsInFeedXml = itemsInFeedXml;
+    summary.itemsAfterDedupe = itemsAfterDedupe;
 
     if (error) {
       logger.error('Poll aborted due to RSS fetch error', { message: error.message });
@@ -109,9 +123,10 @@ async function runPopulate(options = {}) {
       runId
     );
 
+    const done = { ...summary, finishedAt };
     lastRunAt = finishedAt;
-    lastRunSummary = { ...summary, finishedAt };
-    logger.info('Poll complete', summary);
+    lastRunSummary = done;
+    logger.info('Populate complete', done);
 
     return lastRunSummary;
   } catch (err) {

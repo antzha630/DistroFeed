@@ -100,17 +100,35 @@ function homeHandler(req, res) {
       return 'SUCCESS';
     }
 
+    function formatSourceDate(iso) {
+      if (!iso) return '—';
+      try {
+        return new Date(iso).toISOString().slice(0, 10);
+      } catch (e) { return iso; }
+    }
+
     function renderRows(itemResults) {
       if (!Array.isArray(itemResults) || itemResults.length === 0) return '<p class="muted">No item-level results available.</p>';
       const rows = itemResults.slice(0, 15).map((item) =>
         '<tr>' +
           '<td>' + (item.title || '(untitled)') + '</td>' +
+          '<td class="muted">' + formatSourceDate(item.sourcePublishedAt) + '</td>' +
           '<td>' + item.status + '</td>' +
           '<td>' + (item.httpStatus || '-') + '</td>' +
           '<td>' + (item.error || item.reason || '-') + '</td>' +
         '</tr>'
       ).join('');
-      return '<table><thead><tr><th>Title</th><th>Status</th><th>HTTP</th><th>Reason</th></tr></thead><tbody>' + rows + '</tbody></table>';
+      return '<table><thead><tr><th>Title</th><th>RSS date</th><th>Status</th><th>HTTP</th><th>Reason</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+
+    function feedNote(summary) {
+      var cap = summary.maxItemsRequested;
+      var inXml = summary.itemsInFeedXml;
+      if (cap == null || inXml == null) return '';
+      if (inXml < cap) {
+        return '<p class="muted"><strong>Note:</strong> You asked for up to <strong>' + cap + '</strong> items, but this RSS feed only returned <strong>' + inXml + '</strong> entries in its snapshot (Medium and many sites cap recent posts). To import more history you need another source than a single RSS fetch.</p>';
+      }
+      return '';
     }
 
     form.addEventListener('submit', async (e) => {
@@ -142,6 +160,10 @@ function homeHandler(req, res) {
           ' | <strong>Sent:</strong> ' + (summary.itemsSent || 0) +
           ' | <strong>Failed:</strong> ' + (summary.itemsFailed || 0) +
           ' | <strong>Skipped:</strong> ' + (summary.itemsSkipped || 0) + '</p>' +
+          (summary.maxItemsRequested != null ? '<p class="muted"><strong>Max requested:</strong> ' + summary.maxItemsRequested +
+            (summary.itemsInFeedXml != null ? ' &nbsp;|&nbsp; <strong>Entries in RSS XML:</strong> ' + summary.itemsInFeedXml : '') + '</p>' : '') +
+          feedNote(summary) +
+          '<p class="muted"><strong>Distro display date:</strong> If stories still show “just now” in Distro but RSS dates look correct here, the ingest API at your endpoint must map a published/custom date field into the story model — FetchFeed is sending multiple date keys; ask the API owner which one is supported.</p>' +
           '<p><strong>Started:</strong> ' + (summary.startedAt || '-') +
           ' | <strong>Finished:</strong> ' + (summary.finishedAt || '-') + '</p>' +
           (summary.error ? '<p class="fail"><strong>Error:</strong> ' + summary.error + '</p>' : '') +
@@ -228,11 +250,19 @@ function populateHandler(req, res) {
   }
 
   const body = req.body || {};
+  const rawMax = body.maxItems;
+  let maxItems;
+  if (rawMax === undefined || rawMax === null || rawMax === '') {
+    maxItems = undefined;
+  } else {
+    const n = parseInt(rawMax, 10);
+    maxItems = Number.isFinite(n) && n > 0 ? n : undefined;
+  }
   const payload = {
     rssFeedUrl: body.rssFeedUrl,
     apiKey: body.apiKey,
     apiEndpoint: body.apiEndpoint,
-    maxItems: Number(body.maxItems || 20),
+    maxItems,
     dryRun: body.dryRun === true,
   };
 

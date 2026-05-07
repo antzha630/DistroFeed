@@ -16,10 +16,24 @@ function attachSourcePublishDates(payload, iso) {
   payload.publishedAt = iso;
   payload.custom_date = iso;
   payload.customDate = iso;
+  payload.original_publication_date = iso;
   const d = new Date(iso);
   if (!isNaN(d.getTime())) {
     payload.display_date = d.toISOString().slice(0, 10);
   }
+  // Some APIs only map nested metadata; Distro may need to whitelist one of these.
+  payload.metadata = {
+    ...(payload.metadata || {}),
+    published_at: iso,
+    sourcePublishedAt: iso,
+    originalPublishedAt: iso,
+  };
+  payload.story = {
+    ...(payload.story || {}),
+    published_at: iso,
+    publishedAt: iso,
+    custom_date: iso,
+  };
 }
 
 function buildPayload(item, options = {}) {
@@ -176,6 +190,7 @@ async function publishNewItemsWithOptions(items, dryRun = false, options = {}) {
       results.itemResults.push({
         feedItemId: item.feedItemId,
         title: item.title,
+        sourcePublishedAt: item.publishedAt || null,
         status: 'skipped',
         reason: 'already_published',
       });
@@ -192,6 +207,7 @@ async function publishNewItemsWithOptions(items, dryRun = false, options = {}) {
       results.itemResults.push({
         feedItemId: item.feedItemId,
         title: item.title,
+        sourcePublishedAt: item.publishedAt || null,
         status: 'sent',
         httpStatus: result.status ?? null,
       });
@@ -200,6 +216,7 @@ async function publishNewItemsWithOptions(items, dryRun = false, options = {}) {
       results.itemResults.push({
         feedItemId: item.feedItemId,
         title: item.title,
+        sourcePublishedAt: item.publishedAt || null,
         status: 'failed',
         httpStatus: result.status ?? null,
         error: result.error || 'Unknown error',
