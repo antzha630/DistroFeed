@@ -6,34 +6,16 @@ const logger = require('./logger');
 const { getDb } = require('./db');
 
 /**
- * Distro story settings expose "Published date" vs "Custom date"; backends often accept
- * one of several JSON keys. Unknown keys are typically ignored, so we mirror common names.
+ * Distro POST /api/external/news whitelist (packages/backend facade createExternal):
+ * user_info, title, content, more_info_url, source, cost — plus dates once mapped from RSS.
+ * Until createExternal maps these, Distro hardcodes publishedAt = new Date().
+ * Intended contract: publishedAt | published_at | publicationDate (ISO 8601).
  */
 function attachSourcePublishDates(payload, iso) {
   if (!iso) return;
-  payload.published_date = iso;
-  payload.published_at = iso;
   payload.publishedAt = iso;
-  payload.custom_date = iso;
-  payload.customDate = iso;
-  payload.original_publication_date = iso;
-  const d = new Date(iso);
-  if (!isNaN(d.getTime())) {
-    payload.display_date = d.toISOString().slice(0, 10);
-  }
-  // Some APIs only map nested metadata; Distro may need to whitelist one of these.
-  payload.metadata = {
-    ...(payload.metadata || {}),
-    published_at: iso,
-    sourcePublishedAt: iso,
-    originalPublishedAt: iso,
-  };
-  payload.story = {
-    ...(payload.story || {}),
-    published_at: iso,
-    publishedAt: iso,
-    custom_date: iso,
-  };
+  payload.published_at = iso;
+  payload.publicationDate = iso;
 }
 
 function buildPayload(item, options = {}) {
@@ -44,6 +26,7 @@ function buildPayload(item, options = {}) {
     content: item.body,
     more_info_url: item.link,
     source: 'Kite AI',
+    cost: 0,
   };
 
   if (includePublicationDate && item.publishedAt) {
@@ -117,9 +100,9 @@ async function publishOneWithOptions(item, dryRun = false, options = {}) {
       validateStatus: () => true,
     });
 
-    // Keep compatibility with older Distro schemas that may reject date fields.
+    // If backend validation rejects unknown date keys before whitelist is updated, retry without dates.
     if (item.publishedAt && res.status >= 400 && res.status < 500) {
-      logger.warn('Retrying publish without published_date', {
+      logger.warn('Retrying publish without RSS date fields', {
         feedItemId: item.feedItemId,
         status: res.status,
       });
