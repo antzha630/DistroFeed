@@ -20,6 +20,23 @@ function parseDate(val) {
   }
 }
 
+/** First parseable date from RSS/Atom-ish fields (feeds vary by source). */
+function pickItemPublishedAt(item) {
+  const candidates = [
+    item?.pubDate,
+    item?.isoDate,
+    item?.date,
+    item?.updated,
+    item?.['dc:date'],
+    item?.['dcterms:modified'],
+  ];
+  for (const raw of candidates) {
+    const iso = parseDate(raw);
+    if (iso) return iso;
+  }
+  return null;
+}
+
 function getBody(item) {
   const snippet = item?.contentSnippet?.trim();
   if (snippet) return wrapInParagraphs(snippet);
@@ -36,7 +53,7 @@ function normalizeItem(item) {
 
   if (!title || !link) return null;
 
-  const publishedAt = parseDate(item.pubDate || item.isoDate);
+  const publishedAt = pickItemPublishedAt(item);
   const stableId = getStableId(item);
   const body = getBody(item);
 
@@ -77,6 +94,14 @@ async function fetchAndNormalize(feedUrl, maxItems = 20) {
 async function fetchFeed(feedUrl, maxItems = 20) {
   try {
     const items = await fetchAndNormalize(feedUrl, maxItems);
+    const missingDates = items.filter((it) => !it.publishedAt).length;
+    if (missingDates > 0) {
+      logger.warn('Some RSS items had no parseable publish date; Distro may use ingest time', {
+        feedUrl,
+        missingDates,
+        total: items.length,
+      });
+    }
     logger.debug('RSS fetch complete', { count: items.length, feedUrl });
     return { items, error: null };
   } catch (err) {

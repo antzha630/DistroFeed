@@ -5,6 +5,23 @@ const config = require('./config');
 const logger = require('./logger');
 const { getDb } = require('./db');
 
+/**
+ * Distro story settings expose "Published date" vs "Custom date"; backends often accept
+ * one of several JSON keys. Unknown keys are typically ignored, so we mirror common names.
+ */
+function attachSourcePublishDates(payload, iso) {
+  if (!iso) return;
+  payload.published_date = iso;
+  payload.published_at = iso;
+  payload.publishedAt = iso;
+  payload.custom_date = iso;
+  payload.customDate = iso;
+  const d = new Date(iso);
+  if (!isNaN(d.getTime())) {
+    payload.display_date = d.toISOString().slice(0, 10);
+  }
+}
+
 function buildPayload(item, options = {}) {
   const includePublicationDate = options.includePublicationDate !== false;
   const payload = {
@@ -15,9 +32,8 @@ function buildPayload(item, options = {}) {
     source: 'Kite AI',
   };
 
-  // Distro should display source publication date instead of ingest time when available.
   if (includePublicationDate && item.publishedAt) {
-    payload.published_date = item.publishedAt;
+    attachSourcePublishDates(payload, item.publishedAt);
   }
 
   return payload;
@@ -104,7 +120,11 @@ async function publishOneWithOptions(item, dryRun = false, options = {}) {
     }
 
     if (res.status >= 200 && res.status < 300) {
-      logger.info('Published to Distro', { feedItemId: item.feedItemId, status: res.status });
+      logger.info('Published to Distro', {
+        feedItemId: item.feedItemId,
+        status: res.status,
+        sourcePublishedAt: item.publishedAt || null,
+      });
       return { success: true, status: res.status, response: res.data };
     }
 
