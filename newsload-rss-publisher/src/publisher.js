@@ -6,10 +6,10 @@ const logger = require('./logger');
 const { getDb } = require('./db');
 
 /**
- * Distro POST /api/external/news whitelist (packages/backend facade createExternal):
- * user_info, title, content, more_info_url, source, cost — plus dates once mapped from RSS.
- * Until createExternal maps these, Distro hardcodes publishedAt = new Date().
- * Intended contract: publishedAt | published_at | publicationDate (ISO 8601).
+ * Distro POST /api/external/news date contract:
+ * 1) publishedAt (recommended)
+ * 2) published_at
+ * 3) publicationDate
  */
 function attachSourcePublishDates(payload, iso) {
   if (!iso) return;
@@ -117,10 +117,19 @@ async function publishOneWithOptions(item, dryRun = false, options = {}) {
     }
 
     if (res.status >= 200 && res.status < 300) {
+      const storedPublishedAt = res.data?.publishedAt || null;
+      if (item.publishedAt && storedPublishedAt && storedPublishedAt !== item.publishedAt) {
+        logger.warn('Distro stored different publishedAt than requested', {
+          feedItemId: item.feedItemId,
+          requestedPublishedAt: item.publishedAt,
+          storedPublishedAt,
+        });
+      }
       logger.info('Published to Distro', {
         feedItemId: item.feedItemId,
         status: res.status,
         sourcePublishedAt: item.publishedAt || null,
+        storedPublishedAt,
       });
       return { success: true, status: res.status, response: res.data };
     }
