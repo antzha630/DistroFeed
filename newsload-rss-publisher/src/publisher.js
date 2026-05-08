@@ -4,6 +4,7 @@ const axios = require('axios');
 const config = require('./config');
 const logger = require('./logger');
 const { getDb } = require('./db');
+const { sha256 } = require('./utils/hash');
 
 /**
  * Distro POST /api/external/news date contract:
@@ -36,7 +37,17 @@ function buildPayload(item, options = {}) {
   return payload;
 }
 
-function recordItem(db, item, result) {
+function getDedupeScope(options = {}) {
+  const apiEndpoint = options.apiEndpoint || config.distro.apiEndpoint || '';
+  const apiKey = options.apiKey || config.distro.apiKey || '';
+  return `scope:${sha256(`${apiEndpoint}|${apiKey}`)}`;
+}
+
+function toScopedFeedItemId(feedItemId, dedupeScope) {
+  return `${dedupeScope}:${feedItemId}`;
+}
+
+function recordItem(db, item, result, scopedFeedItemId) {
   const now = new Date().toISOString();
   const stmt = db.prepare(`
     INSERT OR REPLACE INTO published_items
@@ -46,7 +57,7 @@ function recordItem(db, item, result) {
 
   if (result.success) {
     stmt.run(
-      item.feedItemId,
+      scopedFeedItemId,
       item.title,
       item.link,
       item.publishedAt,
@@ -58,7 +69,7 @@ function recordItem(db, item, result) {
     );
   } else {
     stmt.run(
-      item.feedItemId,
+      scopedFeedItemId,
       item.title,
       item.link,
       item.publishedAt,
@@ -162,8 +173,8 @@ async function publishOneWithOptions(item, dryRun = false, options = {}) {
   }
 }
 
-function isAlreadyPublished(db, feedItemId) {
-  const row = db.prepare('SELECT 1 FROM published_items WHERE feed_item_id = ?').get(feedItemId);
+function isAlreadyPublished(db, scopedFeedItemId) {
+  const row = db.prepare('SELECT 1 FROM published_items WHERE feed_item_id = ?').get(scopedFeedItemId);
   return !!row;
 }
 
@@ -173,11 +184,13 @@ async function publishNewItems(items, dryRun = false) {
 
 async function publishNewItemsWithOptions(items, dryRun = false, options = {}) {
   const db = getDb();
+  const dedupeScope = getDedupeScope(options);
   const results = { sent: 0, failed: 0, skipped: 0, itemResults: [] };
 
   for (const item of items) {
-    if (isAlreadyPublished(db, item.feedItemId)) {
-      logger.debug('Skip already published', { feedItemId: item.feedItemId });
+    const scopedFeedItemId = toScopedFeedItemId(item.feedItemId, dedupeScope);
+    if (isAlreadyPublished(db, scopedFeedItemId)) {
+      logger.debug('Skip already published', { feedItemId: item.feedItemId, dedupeScope });
       results.skipped++;
       results.itemResults.push({
         feedItemId: item.feedItemId,
@@ -191,7 +204,7 @@ async function publishNewItemsWithOptions(items, dryRun = false, options = {}) {
 
     const result = await publishOneWithOptions(item, dryRun, options);
     if (!result.skipRecord) {
-      recordItem(db, item, result);
+      recordItem(db, item, result, scopedFeedItemId);
     }
 
     if (result.success) {
